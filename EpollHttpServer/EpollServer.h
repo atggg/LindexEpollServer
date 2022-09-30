@@ -33,7 +33,7 @@ const char* getFiletype(const char* name);
 void Send404(int cfd);
 
 void SendDir(int cfd,const char *dir);
-void SendFile(int cfd, const char* fileName, unsigned long offet);
+void SendFile(int cfd, const char* fileName, unsigned long satrtOffet, unsigned long endOffet);
 void* TSendFile(void* arg);
 
 

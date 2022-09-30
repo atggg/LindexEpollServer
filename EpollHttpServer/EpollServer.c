@@ -223,7 +223,11 @@ void* http_request(void* arg)
     char paths[1024] = { 0 };//已经解码的路径
     char protocol[100] = { 0 };//http版本
     char line[1050] = { 0 }; //请求行
-    unsigned int offet = 0;//文件开始的偏移量 主要是支持多线程下载和浏览器播放mp4
+    int rangeFlag = 0;
+    unsigned int startOffet = 0;//文件开始的偏移量 主要是支持多线程下载和浏览器播放mp4
+    unsigned int endOffet = 0;//文件结束偏移量 主要是支持多线程下载和浏览器播放mp4
+
+    printf(info->msg);
 
     //处理请求行信息
     sscanf(info->msg, "%[^\r\n]", line); //从消息内取出请求行；
@@ -233,14 +237,15 @@ void* http_request(void* arg)
     decode_str(paths, path);
 
     //处理请求文件偏移量
-    char* pos = strstr(info->msg, "\r\n");
+    char* pos = strstr(info->msg, "\r\n\r\n");
     if (pos != NULL)
     {
         pos[0] = '\0';
     }
-    char *s1 = strstr(info->msg, "Range:");
+    char *s1 = strstr(info->msg, "Range");
     if (s1 != NULL)
     {
+        rangeFlag = 1;
         s1 = strstr(s1, "bytes=");
         if (s1 != NULL)
         {
@@ -250,7 +255,20 @@ void* http_request(void* arg)
             if (s2 != NULL)
             {
                 s2[0] = '\0';
-                offet = atoi(s1);
+                startOffet = atoi(s1);
+                s2[0] = '-';
+            }
+        }
+        s1 = strstr(s1, "-");
+        if (s1 != NULL)
+        {
+            printf("s1:%s\n", s1);
+            s1 += 1;
+            char* s2 = strstr(s1, "\r\n");
+            if (s2 != NULL)
+            {
+                s2[0] = '\0';
+                endOffet = atoi(s1);
                 s2[0] = '-';
             }
         }
@@ -259,7 +277,7 @@ void* http_request(void* arg)
     {
         pos[0] = '\r';
     }
-    printf("文件偏移量:%d\n", offet);
+    printf("文件开始偏移量:%d  文件结束偏移量:%d Range标志:%d\n", startOffet,endOffet,rangeFlag);
     if (strcmp(method,"GET")!=0)
     {
         //如果不是GET请求 那就直接回复错误
@@ -299,7 +317,8 @@ void* http_request(void* arg)
             else
             {
                 //是文件 给客户端发生文件
-                SendFile(info->cfd, file, offet);
+                SendHttpHead(info->cfd, 200, "OK", getFiletype(file), sa.st_size);
+                SendFile(info->cfd, file, startOffet,0);
             }
         }
         
@@ -368,18 +387,19 @@ void SendDir(int cfd, const char* dir)
     free(html);
 }
 //发送文件
-void SendFile(int cfd, const char* fileName ,unsigned long offet)
+void SendFile(int cfd, const char* fileName ,unsigned long startOffet, unsigned long endOffet)
 {
-    struct stat sa;
-    stat(fileName, &sa);
-    SendHttpHead(cfd, 200, "OK", getFiletype(fileName), sa.st_size - offet);
+    
     int ffd = open(fileName, O_RDONLY);
-    printf("打开文件%s 文件大小:%d 开始偏移量:%d\n",fileName, sa.st_size - offet, offet);
     assert(ffd > 0);
-    lseek(ffd, (off_t)offet, SEEK_SET);
+    if (endOffet == 0)
+    {
+        endOffet = lseek(ffd, 0, SEEK_END);
+    }
+    lseek(ffd, (off_t)startOffet, SEEK_SET);
     char* buff = (char*)malloc(10240);
-    unsigned int pos = 0;
-    while (1)
+    unsigned int pos = startOffet;
+    while (endOffet > pos)
     {
         int rlen = read(ffd, buff, 10240);
         if (rlen > 0)
@@ -445,7 +465,7 @@ void* TSendFile(void* arg)
     ListDel(&ListHead, filePos->cfd);
     printf("已经把链表的数据取出并且删除消息 当前列表元素个数:%d\n", ListCount(&ListHead));
     pthread_mutex_unlock(&mtx);
-    SendFile(cfd, fileName, pos);
+    SendFile(cfd, fileName, pos,0);
 }
 
 void ListInsert(PosList** head, const TcpFilePos* val)
