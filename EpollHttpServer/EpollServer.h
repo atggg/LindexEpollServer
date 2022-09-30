@@ -22,7 +22,7 @@ typedef struct PosList
 
 int Init(int port);
 int EpollRun(int sfd);
-int ConnectClient(int sfd, int repfd, int wepfd);
+int ConnectClient(int sfd, int epfd);
 
 void* http_request(void* arg);
 

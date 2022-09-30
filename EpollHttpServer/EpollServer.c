@@ -68,26 +68,19 @@ int Init(int port)
 
 int EpollRun(int sfd)
 {
-    //创建一个用于监听和 读取的Epoll树
-    int repfd = epoll_create(1);
-    if (repfd == -1)
+    //创建一个Epoll树
+    int epfd = epoll_create(1);
+    if (epfd == -1)
     {
         perror("epoll_create");
         return -1;
     }
-    //创建一个用于写的Epoll树
-    int wepfd = epoll_create(1);
-    if (wepfd == -1)
-    {
-        perror("epoll_create");
-        return -1;
-    }
-    //把服务器端的套接字文件描述符添加到读epoll树上 让内核帮我们管理
+    //把服务器端的套接字文件描述符添加到epoll树上 让内核帮我们管理
 
     struct epoll_event ev;
     ev.data.fd = sfd;
     ev.events = EPOLLIN ;//EPOLLIN代表读事件 
-    int rc = epoll_ctl(repfd, EPOLL_CTL_ADD, sfd, &ev);
+    int rc = epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, &ev);
     if (rc == -1)
     {
         perror("epoll_create");
@@ -96,25 +89,25 @@ int EpollRun(int sfd)
     //进入主循环
     while (1)
     {
-        //开始监听读的epoll树
-        struct epoll_event rev[1024] = {0};
-        int rnum = epoll_wait(repfd, rev, 1024, 1);
-        //开始监听写的epoll树
-        struct epoll_event wev[1024] = {0};
-        int wnum = epoll_wait(wepfd, wev, 1024, 1);
+        //开始监听epoll树
+        struct epoll_event evs[1024] = {0};
+        int num = epoll_wait(epfd, evs, 1024, 1);
 
-        //遍历监听读的epoll树
-        for (int i = 0; i < rnum; i++)
+        //遍历epoll树
+        for (int i = 0; i < num; i++)
         {
-            int fd = rev[i].data.fd;
+            int fd = evs[i].data.fd;
+            int events = evs[i].events;
             //判断这个文件描述夫是不是服务器监听的文件描述符号 如果是那就和客户端建立连接 
             if (fd == sfd)
             {
-                ConnectClient(sfd, repfd, wepfd);
+                ConnectClient(sfd, epfd);
             }
             //如果不是服务器监听的文件描述符 那一定是通信的文件描述符了
-            else
+            //读事件
+            if(fd != sfd && events & EPOLLIN)
             {
+                printf("读事件触发 fd:%d\n",fd);
                 //事情内存接收客户端发来的数据
                 char* buffs = (char *)malloc(10240);
                 int pos = 0;
@@ -127,9 +120,7 @@ int EpollRun(int sfd)
                     if (len == 0)
                     {
                         //从读epoll树删除
-                        rc = epoll_ctl(repfd, EPOLL_CTL_DEL, fd, NULL);
-                        //从写epoll树删除
-                        rc = epoll_ctl(wepfd, EPOLL_CTL_DEL, fd, NULL);
+                        rc = epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
                         //关闭连接
                         close(fd);
                         pthread_mutex_lock(&mtx);
@@ -156,19 +147,21 @@ int EpollRun(int sfd)
                         break;
                     }
                 }
+                //释放内存
+                free(buffs);
             }
-        }
-        //遍历监听写的epoll树
-        for(int i = 0;i< wnum;i++)
-        {
-            pthread_mutex_lock(&mtx);
-            TcpFilePos* filePos = ListFind(&ListHead, wev[i].data.fd);
-            pthread_mutex_unlock(&mtx);
-            if (filePos != NULL)
+            if (fd != sfd && events & EPOLLOUT)
             {
-                pthread_t t;
-                printf("创建一个线程去处理没有发送完的数据\n");
-                pthread_create(&t, NULL, TSendFile, (void*)wev[i].data.fd);
+                printf("写事件触发 fd:%d\n", fd);
+                pthread_mutex_lock(&mtx);
+                TcpFilePos* filePos = ListFind(&ListHead, fd);
+                pthread_mutex_unlock(&mtx);
+                if (filePos != NULL)
+                {
+                    pthread_t t;
+                    printf("创建一个线程去处理没有发送完的数据\n");
+                    pthread_create(&t, NULL, TSendFile, (void*)fd);
+                }
             }
         }
     }
@@ -176,7 +169,7 @@ int EpollRun(int sfd)
     return 0;
 }
 //和客户端建立连接 
-int ConnectClient(int sfd, int repfd, int wepfd)
+int ConnectClient(int sfd, int repfd)
 {
     struct sockaddr_in caddr;
     //和客户端建立连接 
@@ -194,18 +187,11 @@ int ConnectClient(int sfd, int repfd, int wepfd)
     flag |= O_NONBLOCK;
     fcntl(cfd, F_SETFL, flag);
 
-    //把建立的客户端连接添加到读Epoll树和写Epoll树上
+    //把建立的客户端连接添加到Epoll树上
     struct epoll_event ev;
     ev.data.fd = cfd;
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN | EPOLLET | EPOLLOUT;
     int rc = epoll_ctl(repfd, EPOLL_CTL_ADD,cfd, &ev);
-    if (rc == -1)
-    {
-        perror("epoll_ctl");
-        return -1;
-    }
-    ev.events =  EPOLLOUT | EPOLLET;
-    rc = epoll_ctl(wepfd, EPOLL_CTL_ADD, cfd, &ev);
     if (rc == -1)
     {
         perror("epoll_ctl");
@@ -235,6 +221,7 @@ void* http_request(void* arg)
     printf("method = %s, path = %s, protocol = %s\n", method, path, protocol);
     //处理url编码
     decode_str(paths, path);
+
 
     //处理请求文件偏移量
     char* pos = strstr(info->msg, "\r\n\r\n");
