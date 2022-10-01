@@ -24,7 +24,7 @@ int Init(int port);
 int EpollRun(int sfd);
 int ConnectClient(int sfd, int epfd);
 
-void* http_request(void* arg);
+void* HttpRequest(void* arg);
 
 void SendHttpHead(int cfd, int state, const char* stateStr, const char* type, int len);
 

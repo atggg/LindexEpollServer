@@ -74,6 +74,9 @@
   <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <RemoteCCompileToolExe>g++</RemoteCCompileToolExe>
+  </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="EpollServer.c" />
     <ClCompile Include="main.c" />
@@ -85,6 +88,9 @@
     <ClCompile>
       <CLanguageStandard>gnu11</CLanguageStandard>
     </ClCompile>
+    <Link>
+      <LibraryDependencies>pthread</LibraryDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

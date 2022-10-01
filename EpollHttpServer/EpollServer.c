@@ -137,7 +137,7 @@ int EpollRun(int sfd)
                         info->msg = (char*)malloc(strlen(buffs)+1);
                         memcpy(info->msg, buffs, strlen(buffs) + 1);
                         pthread_t th;
-                        pthread_create(&th, NULL, http_request, info);
+                        pthread_create(&th, NULL, HttpRequest, info);
                         break;
                     }
                     //这个情况就是发生错误了
@@ -201,7 +201,7 @@ int ConnectClient(int sfd, int repfd)
     return 0;
 }
 //处理http请求
-void* http_request(void* arg)
+void* HttpRequest(void* arg)
 {
     ClientSendInfo* info = (ClientSendInfo*)arg;
     char method[1000] = { 0 };//请求类型
