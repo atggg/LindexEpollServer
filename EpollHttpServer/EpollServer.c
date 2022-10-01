@@ -15,6 +15,9 @@
 #include<sys/types.h>
 #include<unistd.h>
 
+//buff大小
+#define BUFFSIZE 10240
+
 //锁
 pthread_mutex_t mtx;
 //链表的头
@@ -109,7 +112,7 @@ int EpollRun(int sfd)
             {
                 printf("读事件触发 fd:%d\n",fd);
                 //事情内存接收客户端发来的数据
-                char* buffs = (char *)malloc(10240);
+                char* buffs = (char *)malloc(BUFFSIZE);
                 int pos = 0;
                 //循环接收
                 while (1)
@@ -343,8 +346,8 @@ void SendDir(int cfd, const char* dir)
 {
     printf("发送目录\n");
     //组装一个目录的html界面
-    char* html = (char*)malloc(10240);
-    memset(html, 0,10240);
+    char* html = (char*)malloc(BUFFSIZE);
+    memset(html, 0, BUFFSIZE);
     sprintf(html, "<html><head><title>%s</title></head><body><table>", dir);
     struct dirent** fileList;
     int num = scandir(dir, &fileList, NULL, alphasort);
@@ -384,11 +387,12 @@ void SendFile(int cfd, const char* fileName ,unsigned long startOffet, unsigned 
         endOffet = lseek(ffd, 0, SEEK_END);
     }
     lseek(ffd, (off_t)startOffet, SEEK_SET);
-    char* buff = (char*)malloc(10240);
+    char* buff = (char*)malloc(BUFFSIZE);
     unsigned int pos = startOffet;
     while (endOffet > pos)
     {
-        int rlen = read(ffd, buff, 10240);
+        //读数据 判断结束位置-当前位置 是否>=buff的最大容量 如果成立 那就采用buff的最大容量 不如不成立 那就代表 快到快到结束的位置了 不需要用buff的最大容量了 
+        int rlen = read(ffd, buff, endOffet - pos >= BUFFSIZE ? BUFFSIZE : endOffet - pos);
         if (rlen > 0)
         {
             int wlen = send(cfd, buff, rlen, MSG_NOSIGNAL);
